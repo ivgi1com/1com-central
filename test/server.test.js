@@ -8,8 +8,8 @@ describe('Static file server', () => {
     expect(res.headers['content-type']).toMatch(/html/);
   });
 
-  it('GET /assets/css/core.css returns 200', async () => {
-    const res = await request(app).get('/assets/css/core.css');
+  it('GET /assets/css/demo.css returns 200', async () => {
+    const res = await request(app).get('/assets/css/demo.css');
     expect(res.status).toBe(200);
   });
 });
