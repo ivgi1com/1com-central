@@ -40,6 +40,10 @@ function getCacheEntry(id) {
   return cache.get(Number(id));
 }
 
+function evictCache(id) {
+  cache.delete(Number(id));
+}
+
 async function refreshNode(id) {
   const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(Number(id));
   if (!node) return null;
@@ -48,4 +52,4 @@ async function refreshNode(id) {
   return result;
 }
 
-module.exports = { startPoller, getCache, getCacheEntry, refreshNode };
+module.exports = { startPoller, getCache, getCacheEntry, evictCache, refreshNode };

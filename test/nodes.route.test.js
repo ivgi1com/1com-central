@@ -23,6 +23,7 @@ jest.mock('../poller', () => ({
   startPoller: jest.fn(),
   getCache: jest.fn(() => [cachedNode]),
   getCacheEntry: jest.fn((id) => (Number(id) === 1 ? cachedNode : undefined)),
+  evictCache: jest.fn(),
   refreshNode: jest.fn(async (id) => (Number(id) === 1 ? cachedNode : null)),
 }));
 

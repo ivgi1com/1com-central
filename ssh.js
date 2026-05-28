@@ -1,6 +1,18 @@
 const { Client } = require('ssh2');
 const fs = require('fs');
 
+let _privateKey = null;
+function getPrivateKey() {
+  if (_privateKey) return _privateKey;
+  const keyPath = process.env.SSH_KEY_PATH || '/root/.ssh/id_rsa';
+  try {
+    _privateKey = fs.readFileSync(keyPath);
+    return _privateKey;
+  } catch {
+    return null;
+  }
+}
+
 function parseActiveCalls(stdout) {
   const n = parseInt(stdout.trim(), 10);
   return isNaN(n) ? 0 : n;
@@ -55,11 +67,9 @@ function pollNode(node) {
       error: null,
     };
 
-    let privateKey;
-    try {
-      privateKey = fs.readFileSync(process.env.SSH_KEY_PATH || '/root/.ssh/id_rsa');
-    } catch (e) {
-      result.error = `SSH key not found: ${e.message}`;
+    const privateKey = getPrivateKey();
+    if (!privateKey) {
+      result.error = 'SSH key not found or unreadable';
       return resolve(result);
     }
 

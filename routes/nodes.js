@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const db = require('../db');
-const { getCache, getCacheEntry, refreshNode } = require('../poller');
+const { getCache, getCacheEntry, evictCache, refreshNode } = require('../poller');
 
 const router = Router();
 
@@ -29,6 +29,7 @@ router.post('/', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   db.prepare('UPDATE nodes SET enabled = 0 WHERE id = ?').run(Number(req.params.id));
+  evictCache(req.params.id);
   res.status(204).send();
 });
 
