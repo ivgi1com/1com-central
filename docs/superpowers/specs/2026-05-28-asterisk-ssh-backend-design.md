@@ -86,8 +86,8 @@ SSH library: `ssh2` npm package. One connection per node per poll cycle. Command
 
 ```js
 // Commands run on each node
-'asterisk -rx "core show channels concise" | grep -c "^" || echo 0'
-// → parse as integer (subtract 1 for header line if present)
+'asterisk -rx "core show channels count" 2>/dev/null | grep -oP "^\d+" || echo 0'
+// → outputs "N active channel(s)" — parse leading integer
 
 'asterisk -rx "sip show peers" | grep -c "^[a-zA-Z]" || echo 0'
 // → parse as integer
