@@ -18,9 +18,14 @@ function parseActiveCalls(stdout) {
   return isNaN(n) ? 0 : n;
 }
 
-function parseSipPeers(stdout) {
-  const n = parseInt(stdout.trim(), 10);
-  return isNaN(n) ? 0 : n;
+function parseSipDetail(stdout) {
+  const countMatch = stdout.match(/^(\d+)\s+sip peers/im);
+  const sip_peers = countMatch ? parseInt(countMatch[1], 10) : 0;
+  const tenantSet = new Set();
+  for (const m of stdout.matchAll(/^(\d+)[-_]([^\s/]+)\//gm)) {
+    tenantSet.add(m[2]);
+  }
+  return { sip_peers, tenants: [...tenantSet].sort() };
 }
 
 function parseLoadAvg(stdout) {
@@ -72,7 +77,7 @@ function isAsteriskRunning(stdout) {
 
 const CMDS = [
   'asterisk -rx "core show channels count" 2>/dev/null | grep -oP "^\\d+" || echo 0',
-  'asterisk -rx "sip show peers" | grep -c "^[a-zA-Z]" || echo 0',
+  'asterisk -rx "sip show peers" 2>/dev/null || echo ""',
   'cat /proc/loadavg && uptime -p',
   'asterisk -rx "core show version" 2>/dev/null | head -1 || echo "not running"',
   'free -m | grep "^Mem:"',
@@ -89,6 +94,7 @@ function pollNode(node) {
       status: 'unreachable',
       active_calls: 0,
       sip_peers: 0,
+      tenants: [],
       load_avg: null,
       uptime: null,
       asterisk_version: null,
@@ -127,7 +133,7 @@ function pollNode(node) {
           const loadOut = outputs[2] || '';
           const versionOut = outputs[3] || '';
           result.active_calls = parseActiveCalls(outputs[0] || '0');
-          result.sip_peers = parseSipPeers(outputs[1] || '0');
+          Object.assign(result, parseSipDetail(outputs[1] || ''));
           result.load_avg = parseLoadAvg(loadOut);
           result.uptime = parseUptime(loadOut);
           result.asterisk_version = parseVersion(versionOut);
@@ -175,4 +181,4 @@ function pollNode(node) {
   });
 }
 
-module.exports = { pollNode, parseActiveCalls, parseSipPeers, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning, parseMemory, parseCpu, parseDisk };
+module.exports = { pollNode, parseActiveCalls, parseSipDetail, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning, parseMemory, parseCpu, parseDisk };

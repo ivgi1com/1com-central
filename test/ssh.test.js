@@ -1,6 +1,6 @@
 const {
   parseActiveCalls,
-  parseSipPeers,
+  parseSipDetail,
   parseLoadAvg,
   parseUptime,
   parseVersion,
@@ -25,12 +25,28 @@ describe('parseActiveCalls', () => {
   });
 });
 
-describe('parseSipPeers', () => {
-  test('parses count', () => {
-    expect(parseSipPeers('45\n')).toBe(45);
+describe('parseSipDetail', () => {
+  const sample = [
+    'Name/username             Host                 Dyn Port   Status',
+    '300-ophirlaw/300-ophirlaw 10.0.0.1              D  5060   OK (10 ms)',
+    '300-altrav/300-altrav     10.0.0.1              D  5060   OK (15 ms)',
+    '231-chabadnetanya/231-cha 10.0.0.1              D  5060   OK (20 ms)',
+    '300_avrahamov/300_avraham 10.0.0.1              D  5060   OK (55 ms)',
+    '4 sip peers [Monitored: 3 online, 1 offline Unmonitored: 0 online, 0 offline]',
+  ].join('\n');
+
+  test('parses count from summary line', () => {
+    expect(parseSipDetail(sample).sip_peers).toBe(4);
   });
-  test('returns 0 for non-numeric', () => {
-    expect(parseSipPeers('')).toBe(0);
+  test('returns unique sorted tenants, handles dash and underscore', () => {
+    expect(parseSipDetail(sample).tenants).toEqual(['altrav', 'avrahamov', 'chabadnetanya', 'ophirlaw']);
+  });
+  test('returns 0 and empty tenants for empty string', () => {
+    expect(parseSipDetail('')).toEqual({ sip_peers: 0, tenants: [] });
+  });
+  test('handles zero peers', () => {
+    expect(parseSipDetail('0 sip peers [Monitored: 0 online, 0 offline Unmonitored: 0 online, 0 offline]'))
+      .toEqual({ sip_peers: 0, tenants: [] });
   });
 });
 

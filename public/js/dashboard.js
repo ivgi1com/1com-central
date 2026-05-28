@@ -267,7 +267,15 @@ async function loadNodeDetail(id) {
         ${metricCard('Active Calls', n.active_calls ?? '-')}
       </div>
       <div class="col-6 col-md-4 col-lg-3">
-        ${metricCard('SIP Peers', n.sip_peers ?? '-')}
+        <div class="card h-100">
+          <div class="card-body text-center">
+            <div class="text-muted small mb-1">SIP Peers</div>
+            <div class="fs-4 fw-bold mb-2">${n.sip_peers ?? '-'}</div>
+            <div class="d-flex flex-wrap gap-1 justify-content-center">
+              ${(n.tenants || []).map(t => `<span class="badge bg-label-primary">${esc(t)}</span>`).join('')}
+            </div>
+          </div>
+        </div>
       </div>
       <div class="col-6 col-md-4 col-lg-3">
         ${metricCard('Version', n.asterisk_version ? esc(n.asterisk_version) : '-')}
