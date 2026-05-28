@@ -1,5 +1,6 @@
 let chart = null;
 let _refreshInterval = null;
+const API = (window.BASE_PATH || '') + '/api';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ window.addEventListener('hashchange', router);
 async function refreshDashboard() {
   let nodes;
   try {
-    const res = await fetch('/api/nodes');
+    const res = await fetch(`${API}/nodes`);
     if (!res.ok) return;
     nodes = await res.json();
   } catch (_) {
@@ -176,7 +177,7 @@ async function loadNodesList() {
 
   let nodes;
   try {
-    const res = await fetch('/api/nodes');
+    const res = await fetch(`${API}/nodes`);
     if (!res.ok) throw new Error();
     nodes = await res.json();
   } catch (_) {
@@ -230,7 +231,7 @@ async function loadNodeDetail(id) {
 
   let n;
   try {
-    const res = await fetch(`/api/nodes/${id}`);
+    const res = await fetch(`${API}/nodes/${id}`);
     if (!res.ok) throw new Error();
     n = await res.json();
   } catch (_) {
@@ -318,7 +319,7 @@ async function loadNodeDetail(id) {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-fetch('/api/version')
+fetch(`${API}/version`)
   .then((r) => r.json())
   .then(({ version }) => {
     const el = document.getElementById('app-version');
