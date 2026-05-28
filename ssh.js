@@ -39,6 +39,32 @@ function parseVersion(stdout) {
   return match ? match[1] : null;
 }
 
+function parseMemory(stdout) {
+  const parts = stdout.trim().split(/\s+/);
+  if (parts.length < 7 || parts[0] !== 'Mem:') return { mem_total_mb: null, mem_used_mb: null, mem_avail_mb: null };
+  const total = parseInt(parts[1], 10);
+  const used = parseInt(parts[2], 10);
+  const avail = parseInt(parts[6], 10);
+  if (isNaN(total) || isNaN(used) || isNaN(avail)) return { mem_total_mb: null, mem_used_mb: null, mem_avail_mb: null };
+  return { mem_total_mb: total, mem_used_mb: used, mem_avail_mb: avail };
+}
+
+function parseCpu(stdout) {
+  const match = stdout.match(/(\d+(?:\.\d+))\s*id/);
+  if (!match) return null;
+  const idle = parseFloat(match[1]);
+  return Math.round((100 - idle) * 10) / 10;
+}
+
+function parseDisk(stdout) {
+  const parts = stdout.trim().split(/\s+/);
+  if (parts.length < 5) return { disk_use_pct: null, disk_avail: null };
+  const pctStr = parts[4];
+  const pct = parseInt(pctStr, 10);
+  if (isNaN(pct)) return { disk_use_pct: null, disk_avail: null };
+  return { disk_use_pct: pct, disk_avail: parts[3] };
+}
+
 function isAsteriskRunning(stdout) {
   const s = stdout.toLowerCase().trim();
   return s.length > 0 && !s.includes('not running') && /asterisk/i.test(stdout);
@@ -49,6 +75,9 @@ const CMDS = [
   'asterisk -rx "sip show peers" | grep -c "^[a-zA-Z]" || echo 0',
   'cat /proc/loadavg && uptime -p',
   'asterisk -rx "core show version" 2>/dev/null | head -1 || echo "not running"',
+  'free -m | grep "^Mem:"',
+  'top -bn1 2>/dev/null | grep -E "^[%]?Cpu"',
+  'df -h / | tail -1',
 ];
 
 function pollNode(node) {
@@ -63,6 +92,12 @@ function pollNode(node) {
       load_avg: null,
       uptime: null,
       asterisk_version: null,
+      mem_total_mb: null,
+      mem_used_mb: null,
+      mem_avail_mb: null,
+      cpu_pct: null,
+      disk_use_pct: null,
+      disk_avail: null,
       last_updated: new Date().toISOString(),
       error: null,
     };
@@ -97,6 +132,9 @@ function pollNode(node) {
           result.uptime = parseUptime(loadOut);
           result.asterisk_version = parseVersion(versionOut);
           result.status = isAsteriskRunning(versionOut) ? 'ok' : 'asterisk_down';
+          Object.assign(result, parseMemory(outputs[4] || ''));
+          result.cpu_pct = parseCpu(outputs[5] || '');
+          Object.assign(result, parseDisk(outputs[6] || ''));
           return resolve(result);
         }
 
@@ -137,4 +175,4 @@ function pollNode(node) {
   });
 }
 
-module.exports = { pollNode, parseActiveCalls, parseSipPeers, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning };
+module.exports = { pollNode, parseActiveCalls, parseSipPeers, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning, parseMemory, parseCpu, parseDisk };

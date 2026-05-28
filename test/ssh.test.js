@@ -5,6 +5,9 @@ const {
   parseUptime,
   parseVersion,
   isAsteriskRunning,
+  parseMemory,
+  parseCpu,
+  parseDisk,
 } = require('../ssh');
 
 describe('parseActiveCalls', () => {
@@ -70,5 +73,46 @@ describe('isAsteriskRunning', () => {
   });
   test('returns false for empty string', () => {
     expect(isAsteriskRunning('')).toBe(false);
+  });
+});
+
+describe('parseMemory', () => {
+  test('parses free -m Mem: line', () => {
+    expect(parseMemory('Mem:           7982       6234        123        456       1625       1748'))
+      .toEqual({ mem_total_mb: 7982, mem_used_mb: 6234, mem_avail_mb: 1748 });
+  });
+  test('returns nulls for empty string', () => {
+    expect(parseMemory('')).toEqual({ mem_total_mb: null, mem_used_mb: null, mem_avail_mb: null });
+  });
+  test('returns nulls for malformed line', () => {
+    expect(parseMemory('Mem: 1024')).toEqual({ mem_total_mb: null, mem_used_mb: null, mem_avail_mb: null });
+  });
+});
+
+describe('parseCpu', () => {
+  test('parses %Cpu(s) format', () => {
+    expect(parseCpu('%Cpu(s):  3.1 us,  0.4 sy,  0.0 ni, 96.4 id,  0.0 wa')).toBe(3.6);
+  });
+  test('parses Cpu(s) format without percent sign', () => {
+    expect(parseCpu('Cpu(s):  5.0 us,  1.0 sy,  0.0 ni, 94.0 id')).toBe(6);
+  });
+  test('returns null for empty string', () => {
+    expect(parseCpu('')).toBeNull();
+  });
+  test('returns null when no id field', () => {
+    expect(parseCpu('some garbage line')).toBeNull();
+  });
+});
+
+describe('parseDisk', () => {
+  test('parses df -h tail line', () => {
+    expect(parseDisk('/dev/sda1        50G   20G   27G  43% /'))
+      .toEqual({ disk_use_pct: 43, disk_avail: '27G' });
+  });
+  test('returns nulls for empty string', () => {
+    expect(parseDisk('')).toEqual({ disk_use_pct: null, disk_avail: null });
+  });
+  test('returns nulls for malformed line', () => {
+    expect(parseDisk('bad line')).toEqual({ disk_use_pct: null, disk_avail: null });
   });
 });
