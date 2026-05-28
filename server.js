@@ -6,7 +6,8 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 
 if (require.main === module) {
-  app.listen(3000, () => console.log('Dashboard running on :3000'));
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`Dashboard running on :${PORT}`));
 }
 
 module.exports = app;
