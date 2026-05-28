@@ -10,39 +10,63 @@ const BASE = (process.env.BASE_PATH || '').replace(/\/+$/, '');
 
 function loginPage(base, error) {
   return `<!doctype html>
-<html lang="en">
+<html lang="en" class="light-style customizer-hide" data-assets-path="${base}/assets/" data-template="vertical-menu-template-free">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>1COM Central – Login</title>
-  <base href="${base}/">
-  <link rel="stylesheet" href="assets/vendor/css/core.css">
-  <link rel="stylesheet" href="assets/css/demo.css">
-  <style>
-    body { background: #f4f5fb; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-    .login-card { width: 100%; max-width: 420px; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <title>1COM Central – Sign In</title>
+  <link rel="icon" type="image/x-icon" href="${base}/assets/img/favicon/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="${base}/assets/vendor/fonts/iconify-icons.css">
+  <link rel="stylesheet" href="${base}/assets/vendor/css/core.css">
+  <link rel="stylesheet" href="${base}/assets/css/demo.css">
+  <link rel="stylesheet" href="${base}/assets/vendor/css/pages/page-auth.css">
+  <script src="${base}/assets/vendor/js/helpers.js"></script>
+  <script src="${base}/assets/js/config.js"></script>
 </head>
 <body>
-  <div class="login-card">
-    <div class="card shadow-sm">
-      <div class="card-body p-4">
-        <h5 class="card-title text-center mb-4">1COM Central</h5>
-        ${error ? `<div class="alert alert-danger py-2">${error}</div>` : ''}
-        <form method="POST" action="${base}/login">
-          <div class="mb-3">
-            <label class="form-label">Username</label>
-            <input type="text" name="username" class="form-control" autofocus autocomplete="username">
+  <div class="authentication-wrapper authentication-basic container-p-y">
+    <div class="authentication-inner py-6">
+      <div class="card">
+        <div class="card-body">
+          <div class="app-brand justify-content-center mb-6">
+            <span class="app-brand-text demo fw-bold ms-2 fs-4">1COM Central</span>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Password</label>
-            <input type="password" name="password" class="form-control" autocomplete="current-password">
-          </div>
-          <button type="submit" class="btn btn-primary w-100">Sign in</button>
-        </form>
+          <h4 class="mb-1">Welcome</h4>
+          <p class="mb-6 text-muted">Sign in to your account</p>
+          ${error ? `<div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+            <i class="bx bx-error-circle me-2 fs-5"></i>${error}
+          </div>` : ''}
+          <form method="POST" action="${base}/login">
+            <div class="mb-4">
+              <label class="form-label">Username</label>
+              <input type="text" name="username" class="form-control" placeholder="Enter your username" autofocus autocomplete="username">
+            </div>
+            <div class="mb-6">
+              <label class="form-label">Password</label>
+              <div class="input-group input-group-merge">
+                <input type="password" id="password" name="password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+                <span class="input-group-text cursor-pointer" onclick="togglePwd()">
+                  <i id="pwd-icon" class="bx bx-hide"></i>
+                </span>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary d-grid w-100">Sign in</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>
+  <script>
+    function togglePwd() {
+      var inp = document.getElementById('password');
+      var ico = document.getElementById('pwd-icon');
+      if (inp.type === 'password') { inp.type = 'text'; ico.className = 'bx bx-show'; }
+      else { inp.type = 'password'; ico.className = 'bx bx-hide'; }
+    }
+  </script>
 </body>
 </html>`;
 }
