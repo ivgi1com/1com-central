@@ -139,6 +139,7 @@ app.get(BASE ? [BASE, BASE + '/'] : '/', serveIndex);
 app.get(BASE + '/api/version', (req, res) => res.json({ version: require('./package.json').version }));
 app.use(BASE, express.static(path.join(__dirname, 'public')));
 app.use(BASE + '/api/nodes', require('./routes/nodes'));
+app.use(BASE + '/api/admin/nodes', require('./routes/admin'));
 
 if (require.main === module) {
   require('./poller').startPoller();

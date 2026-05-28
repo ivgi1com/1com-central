@@ -181,4 +181,45 @@ function pollNode(node) {
   });
 }
 
-module.exports = { pollNode, parseActiveCalls, parseSipDetail, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning, parseMemory, parseCpu, parseDisk };
+function runCommand(node, cmd, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const out = { stdout: '', stderr: '', exitCode: -1 };
+    const privateKey = getPrivateKey();
+    if (!privateKey) return resolve({ ...out, stderr: 'SSH key not found' });
+
+    const conn = new Client();
+    const connTimer = setTimeout(() => {
+      conn.destroy();
+      resolve({ ...out, stderr: 'connect timeout' });
+    }, 5000);
+
+    conn.on('ready', () => {
+      clearTimeout(connTimer);
+      conn.exec(cmd, (err, stream) => {
+        if (err) { conn.end(); return resolve({ ...out, stderr: err.message }); }
+        const cmdTimer = setTimeout(() => {
+          stream.close();
+          conn.end();
+          resolve({ ...out, stderr: 'command timeout', exitCode: 124 });
+        }, timeoutMs);
+        stream.on('data', (d) => { out.stdout += d; });
+        stream.stderr.on('data', (d) => { out.stderr += d; });
+        stream.on('close', (code) => {
+          clearTimeout(cmdTimer);
+          out.exitCode = code ?? 0;
+          conn.end();
+          resolve(out);
+        });
+      });
+    });
+
+    conn.on('error', (err) => {
+      clearTimeout(connTimer);
+      resolve({ ...out, stderr: err.message });
+    });
+
+    conn.connect({ host: node.host, username: node.ssh_user, privateKey, readyTimeout: 5000 });
+  });
+}
+
+module.exports = { pollNode, runCommand, parseActiveCalls, parseSipDetail, parseLoadAvg, parseUptime, parseVersion, isAsteriskRunning, parseMemory, parseCpu, parseDisk };

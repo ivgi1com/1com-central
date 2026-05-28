@@ -18,4 +18,18 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL DEFAULT (datetime('now')),
+    user        TEXT NOT NULL DEFAULT 'admin',
+    node_id     INTEGER NOT NULL,
+    tenant      TEXT NOT NULL DEFAULT '',
+    action      TEXT NOT NULL,
+    params      TEXT NOT NULL DEFAULT '{}',
+    exit_code   INTEGER,
+    duration_ms INTEGER
+  )
+`);
+
 module.exports = db;
