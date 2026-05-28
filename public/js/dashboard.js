@@ -525,7 +525,16 @@ function renderActionResult(el, data) {
     el.innerHTML = `<div class="alert alert-warning py-2 small mb-0"><i class="bx bx-error me-1"></i>${esc(data.error)}</div>`;
     return;
   }
-  const stdout   = (data.stdout || '').trim();
+
+  // Route to structured renderer when available
+  const renderer = STRUCTURED_RENDERERS[data.action];
+  if (renderer && (data.stdout || '').trim()) {
+    renderer(el, data);
+    return;
+  }
+
+  // Fallback: styled output panel
+  const stdout    = (data.stdout || '').trim();
   const exitBadge = data.exitCode === 0
     ? '<span class="badge bg-success">ok</span>'
     : `<span class="badge bg-warning text-dark">exit ${data.exitCode}</span>`;
@@ -545,8 +554,7 @@ function renderActionResult(el, data) {
       ${copyBtn}
     </div>
     ${stdout
-      ? `<pre class="bg-dark text-light p-2 rounded mb-0"
-              style="max-height:300px;overflow-y:auto;white-space:pre-wrap;font-size:.72rem">${esc(stdout)}</pre>`
+      ? `<pre class="noc-raw-output">${esc(stdout)}</pre>`
       : '<p class="text-muted small mb-0"><i class="bx bx-check me-1"></i>Command completed — no output.</p>'
     }`;
 
@@ -582,6 +590,616 @@ function confirmAction(actionName, nodeId, tenantEncoded) {
       </div>
     </div>`;
 }
+
+// ── NOC Structured Output Parsers & Renderers ─────────────────────────────────
+
+const STATE_CSS = {
+  NOT_INUSE:   'available',
+  INUSE:       'inuse',
+  BUSY:        'busy',
+  RINGING:     'ringing',
+  UNAVAILABLE: 'unavailable',
+};
+
+let _blfUid = 0;
+
+function buildRawToggle(stdout, exitCode, durationMs) {
+  if (!stdout || !stdout.trim()) return '';
+  const s = stdout.trim();
+  const exitBadge = exitCode === 0
+    ? '<span class="badge bg-success">ok</span>'
+    : `<span class="badge bg-warning text-dark">exit ${exitCode}</span>`;
+  const copyBtn = `<button class="btn py-0 px-1 btn-outline-secondary btn-sm ms-auto"
+      title="Copy output" onclick="copyText(this,${JSON.stringify(s)})">
+    <i class="bx bx-copy"></i></button>`;
+  return `<div class="raw-output-toggle mt-2">
+    <button class="btn btn-outline-secondary raw-toggle-btn"
+            onclick="this.nextElementSibling.classList.toggle('d-none')">
+      <i class="bx bx-code-alt me-1"></i>Show Raw Output
+    </button>
+    <div class="d-none mt-1">
+      <div class="d-flex align-items-center gap-2 mb-1">${exitBadge}<small class="text-muted">${durationMs}ms</small>${copyBtn}</div>
+      <pre class="raw-pre">${esc(s)}</pre>
+    </div>
+  </div>`;
+}
+
+// ── SIP Peers ──────────────────────────────────────────────────────────────────
+
+function parsePeers(stdout) {
+  const peers = [];
+  for (const line of stdout.split('\n')) {
+    const t = line.trim();
+    if (!t || /^Name\/username/i.test(t) || /^\d+ sip peer/i.test(t) || t.startsWith('---')) continue;
+    const cols = t.split(/\s{2,}/);
+    if (cols.length < 2) continue;
+    const name    = cols[0].split('/')[0];
+    const rawHost = cols[1] || '';
+    let host = '—', port = '—';
+    if (rawHost !== '(Unspecified)' && rawHost.includes(':')) {
+      [host, port] = rawHost.split(':');
+    } else if (rawHost && rawHost !== '(Unspecified)') {
+      host = rawHost;
+    }
+    const rest   = cols.slice(2).join(' ');
+    const sm     = /\b(OK|UNREACHABLE|UNKNOWN)\b/i.exec(rest);
+    const status = sm ? sm[1].toUpperCase() : (rawHost === '(Unspecified)' ? 'UNREACHABLE' : 'UNKNOWN');
+    const lm     = /\((\d+)ms\)/.exec(rest);
+    const latencyMs = lm ? parseInt(lm[1], 10) : null;
+    peers.push({ name, host, port, status, latencyMs });
+  }
+  const online      = peers.filter(p => p.status === 'OK').length;
+  const unreachable = peers.filter(p => p.status === 'UNREACHABLE').length;
+  const lats        = peers.filter(p => p.latencyMs != null).map(p => p.latencyMs);
+  const avgMs       = lats.length ? Math.round(lats.reduce((a, b) => a + b, 0) / lats.length) : null;
+  return { peers, summary: { total: peers.length, online, unreachable, avgMs } };
+}
+
+function renderPeers(el, data) {
+  const { peers, summary } = parsePeers(data.stdout);
+  const sc = (val, cls, lbl) =>
+    `<div class="summary-item ${cls}"><span class="sc-value">${val ?? '—'}</span><span class="sc-label">${lbl}</span></div>`;
+  const summaryHtml = `<div class="summary-counters">
+    ${sc(summary.total, '', 'Total')}
+    ${sc(summary.online, 'ok', 'Online')}
+    ${sc(summary.unreachable, 'unreachable', 'Down')}
+    ${sc(summary.avgMs != null ? summary.avgMs + 'ms' : '—', 'warn', 'Avg Latency')}
+  </div>`;
+
+  let tableHtml;
+  if (peers.length === 0) {
+    tableHtml = `<div class="empty-state"><i class="bx bx-phone-off"></i><div class="empty-state-text">No SIP peers found for this tenant</div></div>`;
+  } else {
+    const rows = peers.map(p => {
+      const cls    = p.status === 'OK' ? 'ok' : p.status === 'UNREACHABLE' ? 'unreachable' : 'unknown';
+      const latHtml = p.latencyMs != null
+        ? `<span class="latency-badge${p.latencyMs > 100 ? ' latency-badge--warn' : ''}">${p.latencyMs}ms</span>`
+        : '<span class="text-muted small">—</span>';
+      return `<tr class="peer-row peer-row--${cls}">
+        <td class="peer-name">${esc(p.name)}</td>
+        <td class="peer-host">${esc(p.host)}${p.port !== '—' ? `<span class="text-muted">:${esc(p.port)}</span>` : ''}</td>
+        <td><span class="status-chip status-chip--${cls}">${esc(p.status)}</span></td>
+        <td>${latHtml}</td>
+      </tr>`;
+    }).join('');
+    tableHtml = `<table class="peer-table">
+      <thead><tr><th>Peer</th><th>Host</th><th>Status</th><th>Latency</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+  el.innerHTML = `<div class="noc-output">${summaryHtml}${tableHtml}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── BLF State ──────────────────────────────────────────────────────────────────
+
+function parseBlf(stdout) {
+  const subscriptions = [];
+  const counts = {};
+  for (const line of stdout.split('\n')) {
+    const m = /^\|\s*EXT:(\S+)\s*\|\s*BLF state\s+(\S+)\s*\|\s*Subscribe\s+(\d+)/i.exec(line.trim());
+    if (!m) continue;
+    const peer = m[1], state = m[2].toUpperCase(), subCount = parseInt(m[3], 10);
+    const extM = /^(\d+)/.exec(peer);
+    const ext  = extM ? extM[1] : peer;
+    subscriptions.push({ peer, ext, state, subCount });
+    counts[state] = (counts[state] || 0) + 1;
+  }
+  return { subscriptions, counts };
+}
+
+function renderBlf(el, data) {
+  const { subscriptions, counts } = parseBlf(data.stdout);
+  if (subscriptions.length === 0) {
+    el.innerHTML = `<div class="noc-output"><div class="empty-state"><i class="bx bx-radio-circle-marked"></i><div class="empty-state-text">No BLF subscriptions found</div></div>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+    return;
+  }
+  const uid  = ++_blfUid;
+  const FLTS = [
+    ['all',         'All',         subscriptions.length],
+    ['NOT_INUSE',   'Available',   counts.NOT_INUSE   || 0],
+    ['INUSE',       'In Use',      counts.INUSE       || 0],
+    ['BUSY',        'Busy',        counts.BUSY        || 0],
+    ['RINGING',     'Ringing',     counts.RINGING     || 0],
+    ['UNAVAILABLE', 'Unavailable', counts.UNAVAILABLE || 0],
+  ];
+  const filterBtns = FLTS.map(([f, lbl, n]) =>
+    `<button class="filter-btn${f === 'all' ? ' active' : ''}" data-filter="${f}">${esc(lbl)}<span class="filter-count">${n}</span></button>`
+  ).join('');
+  const items = subscriptions.map(s => {
+    const css = STATE_CSS[s.state] || 'unknown';
+    return `<div class="blf-item" data-state="${esc(s.state)}">
+      <span class="state-badge state-badge--${css}"><span class="state-dot"></span></span>
+      <div style="min-width:0;flex:1">
+        <div class="blf-ext">${esc(s.ext)}</div>
+        <div class="blf-peer">${esc(s.peer)}</div>
+      </div>
+      <span class="blf-subs">${s.subCount} sub</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="noc-output">
+    <div class="blf-filter-bar" id="blf-fb-${uid}">${filterBtns}</div>
+    <div class="blf-grid" id="blf-grid-${uid}">${items}</div>
+    ${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}
+  </div>`;
+  const fb   = el.querySelector(`#blf-fb-${uid}`);
+  const grid = el.querySelector(`#blf-grid-${uid}`);
+  fb.addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    fb.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const f = btn.dataset.filter;
+    grid.querySelectorAll('.blf-item').forEach(item => {
+      item.style.display = (f === 'all' || item.dataset.state === f) ? '' : 'none';
+    });
+  });
+}
+
+// ── Device State ───────────────────────────────────────────────────────────────
+
+function parseDevstate(stdout) {
+  const devices = [];
+  for (const line of stdout.split('\n')) {
+    const m = /^\|\s*(\S+)\s*\|\s*Extension Is\s+(\S+)/i.exec(line.trim());
+    if (!m) continue;
+    devices.push({ id: m[1], state: m[2].toUpperCase() });
+  }
+  return { devices };
+}
+
+function renderDevstate(el, data) {
+  const { devices } = parseDevstate(data.stdout);
+  let inner;
+  if (devices.length === 0) {
+    inner = `<div class="empty-state"><i class="bx bx-devices"></i><div class="empty-state-text">No device state data</div></div>`;
+  } else {
+    inner = `<div class="devstate-list">${devices.map(d => {
+      const css = STATE_CSS[d.state] || 'unknown';
+      return `<div class="devstate-item">
+        <span class="state-badge state-badge--${css}"><span class="state-dot"></span></span>
+        <div class="devstate-id">${esc(d.id)}</div>
+        <span class="state-label">${esc(d.state)}</span>
+      </div>`;
+    }).join('')}</div>`;
+  }
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Active Channels ────────────────────────────────────────────────────────────
+
+function parseChannels(stdout) {
+  const sections = stdout.split(/\n?---\n?/);
+  let count = 0, activeCalls = 0;
+  const channels = [];
+  if (sections[0]) {
+    const m = /(\d+)/.exec(sections[0]);
+    count = m ? parseInt(m[1], 10) : 0;
+  }
+  if (sections[1]) {
+    for (const line of sections[1].split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      const parts = t.split('!');
+      if (parts.length < 5) continue;
+      channels.push({ name: parts[0], context: parts[1], exten: parts[2], state: parts[4], app: parts[5], appData: parts[6], callerId: parts[7], duration: parts[9] });
+    }
+  }
+  if (sections[2]) {
+    const m = /(\d+)\s+active call/i.exec(sections[2]);
+    if (m) activeCalls = parseInt(m[1], 10);
+  }
+  return { count, channels, activeCalls };
+}
+
+function renderChannels(el, data) {
+  const { count, channels, activeCalls } = parseChannels(data.stdout);
+  let inner;
+  if (count === 0 && channels.length === 0) {
+    inner = `<div class="empty-state">
+      <i class="bx bx-phone-off"></i>
+      <div class="empty-state-text">No Active Calls</div>
+      <div class="empty-state-sub">This tenant currently has no live channels</div>
+    </div>`;
+  } else {
+    inner = `<div class="channels-banner">
+      <span class="live-indicator"></span>
+      <span class="channels-count">${count}</span>
+      <span class="channels-label">active channel${count !== 1 ? 's' : ''} · ${activeCalls} active call${activeCalls !== 1 ? 's' : ''}</span>
+    </div>`;
+    if (channels.length > 0) {
+      inner += `<div class="channel-list">${channels.map(c => `<div class="channel-item">
+        <div class="channel-name">${esc(c.name)}</div>
+        <div class="channel-meta">
+          ${c.app ? `<span class="badge bg-label-secondary" style="font-size:.62rem">${esc(c.app)}</span>` : ''}
+          ${c.callerId ? `<span class="text-muted small">${esc(c.callerId)}</span>` : ''}
+          ${c.context ? `<span class="text-muted small">${esc(c.context)}</span>` : ''}
+          ${c.duration ? `<span class="text-muted small"><i class="bx bx-time-five me-1"></i>${esc(c.duration)}</span>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+    }
+  }
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Unreachable Events ─────────────────────────────────────────────────────────
+
+function parseUnreachableLines(lines) {
+  const events = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    // Format after sed: "| 2024-01-15 14:32:15 | 43-optinice' UNREACHABLE!"
+    // or with 3 parts: "| ts | peer | event"
+    const parts = t.split(/\s*\|\s*/).filter(Boolean);
+    if (parts.length === 0) continue;
+    if (parts.length === 1) {
+      events.push({ ts: '—', peer: parts[0], event: '—' });
+      continue;
+    }
+    const ts   = parts[0].trim();
+    const rest = parts.slice(1).join(' | ').trim();
+    // rest may be "43-optinice' UNREACHABLE!" — split peer from event
+    let peer = rest, event = '—';
+    const apoIdx = rest.lastIndexOf("' ");
+    if (apoIdx >= 0) {
+      peer  = rest.slice(0, apoIdx).replace(/^'/, '');
+      event = rest.slice(apoIdx + 2).replace(/!$/, '').trim();
+    } else {
+      const words = rest.split(/\s+/);
+      if (words.length > 1) {
+        event = words.pop().replace(/!$/, '');
+        peer  = words.join(' ').replace(/^'|'$/g, '');
+      }
+    }
+    events.push({ ts, peer, event });
+  }
+  return events;
+}
+
+function unreachableTable(events) {
+  if (events.length === 0) return `<div class="text-muted small ps-2 mb-1">No events</div>`;
+  const rows = events.map(e => {
+    const bad = /unreachable|unregistered/i.test(e.event);
+    return `<tr>
+      <td class="ts">${esc(e.ts)}</td>
+      <td>${esc(e.peer)}</td>
+      <td><span class="status-chip status-chip--${bad ? 'unreachable' : 'ok'}">${esc(e.event)}</span></td>
+    </tr>`;
+  }).join('');
+  return `<table class="noc-table"><thead><tr><th>Timestamp</th><th>Peer</th><th>Event</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderUnreachable(el, data) {
+  const events = parseUnreachableLines(data.stdout.split('\n'));
+  const inner = events.length === 0
+    ? `<div class="empty-state"><i class="bx bx-check-circle" style="color:var(--noc-ok)"></i><div class="empty-state-text">No unreachable events found</div></div>`
+    : unreachableTable(events);
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+function renderUnreachableHistory(el, data) {
+  const fileBlocks = [];
+  let current = null;
+  for (const line of data.stdout.split('\n')) {
+    const m = /^===\s*(.+?)\s*===$/.exec(line.trim());
+    if (m) { current = { file: m[1], lines: [] }; fileBlocks.push(current); }
+    else if (current) current.lines.push(line);
+  }
+  if (fileBlocks.length === 0) { renderUnreachable(el, data); return; }
+  let html = '<div class="noc-output">';
+  for (const blk of fileBlocks) {
+    const shortFile = blk.file.replace('/var/log/asterisk/', '');
+    html += `<div class="noc-section-header"><i class="bx bx-file me-1"></i>${esc(shortFile)}</div>`;
+    html += unreachableTable(parseUnreachableLines(blk.lines));
+  }
+  html += buildRawToggle(data.stdout, data.exitCode, data.durationMs) + '</div>';
+  el.innerHTML = html;
+}
+
+function renderUnreachableSummary(el, data) {
+  const items = [];
+  for (const line of data.stdout.split('\n')) {
+    const m = /^\|\s*ext\s+(\S+)\s+was\s+(\S+)\s+(\d+)\s+times/i.exec(line.trim());
+    if (m) items.push({ peer: m[1], event: m[2], count: parseInt(m[3], 10) });
+  }
+  let inner;
+  if (items.length === 0) {
+    inner = `<div class="empty-state"><i class="bx bx-check-circle" style="color:var(--noc-ok)"></i><div class="empty-state-text">No unreachable events in log</div></div>`;
+  } else {
+    const rows = items.map(it => `<tr>
+      <td class="peer-name">${esc(it.peer)}</td>
+      <td><span class="status-chip status-chip--${/unreachable/i.test(it.event) ? 'unreachable' : 'warn'}">${esc(it.event)}</span></td>
+      <td><span class="count-badge">${it.count}</span></td>
+    </tr>`).join('');
+    inner = `<table class="noc-table"><thead><tr><th>Peer</th><th>Event</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Queue Status ───────────────────────────────────────────────────────────────
+
+function renderQueue(el, data) {
+  const lines = data.stdout.split('\n');
+  // Parse header line, members, callers
+  let headerHtml = '', membersHtml = '', callersHtml = '';
+  let inMembers = false, inCallers = false;
+  const members = [], callers = [];
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    const hm = /^(\S+)\s+has\s+(\d+)\s+calls?(?:.*?in\s+'?([^'\s,]+)'?)?(?:.*?W:(\d+))?(?:.*?C:(\d+))?(?:.*?A:(\d+))?/.exec(t);
+    if (hm && !headerHtml) {
+      const wm = /W:(\d+)/.exec(t), cm = /C:(\d+)/.exec(t), am = /A:(\d+)/.exec(t);
+      headerHtml = `<div class="summary-counters">
+        <div class="summary-item"><span class="sc-value">${hm[2]}</span><span class="sc-label">Active</span></div>
+        ${wm ? `<div class="summary-item warn"><span class="sc-value">${wm[1]}</span><span class="sc-label">Waiting</span></div>` : ''}
+        ${cm ? `<div class="summary-item ok"><span class="sc-value">${cm[1]}</span><span class="sc-label">Completed</span></div>` : ''}
+        ${am ? `<div class="summary-item unreachable"><span class="sc-value">${am[1]}</span><span class="sc-label">Abandoned</span></div>` : ''}
+        ${hm[3] ? `<div class="summary-item"><span class="sc-value" style="font-size:.75rem">${esc(hm[3])}</span><span class="sc-label">Strategy</span></div>` : ''}
+      </div>`;
+      continue;
+    }
+    if (/Members:/i.test(t)) { inMembers = true; inCallers = false; continue; }
+    if (/Callers:/i.test(t)) { inCallers = true; inMembers = false; continue; }
+    if (inMembers && /^\s/.test(line)) {
+      const stm = /\(([^)]+in use[^)]*|Not in use|[^)]+)\)\s+has taken (\d+)/i.exec(t);
+      const nameM = /^([^\s(]+)/.exec(t);
+      if (nameM) members.push({ name: nameM[1], state: stm ? stm[1] : '—', calls: stm ? stm[2] : '—' });
+    }
+    if (inCallers && /^\s/.test(line)) {
+      const cm2 = /^\d+\.\s+(\S+)\s+\(wait:\s*([^,)]+)/.exec(t);
+      if (cm2) callers.push({ channel: cm2[1], wait: cm2[2] });
+    }
+  }
+
+  if (members.length > 0) {
+    const rows = members.map(m => {
+      const isInUse = /in use/i.test(m.state);
+      return `<div class="queue-member">
+        <span class="state-badge state-badge--${isInUse ? 'inuse' : 'available'}"><span class="state-dot"></span></span>
+        <span class="queue-member-name">${esc(m.name)}</span>
+        <span class="state-label">${esc(m.state)}</span>
+        <span class="count-badge count-badge--ok ms-auto">${esc(m.calls)}</span>
+      </div>`;
+    }).join('');
+    membersHtml = `<div class="noc-section-header">Members</div><div class="queue-members">${rows}</div>`;
+  }
+  if (callers.length > 0) {
+    const rows = callers.map((c, i) => `<div class="queue-caller">
+      <span class="text-muted small">${i + 1}.</span>
+      <span style="font-size:.72rem;flex:1">${esc(c.channel)}</span>
+      <span class="text-muted small"><i class="bx bx-time-five me-1"></i>${esc(c.wait)}</span>
+    </div>`).join('');
+    callersHtml = `<div class="noc-section-header">Waiting Callers</div>${rows}`;
+  }
+
+  const inner = headerHtml || membersHtml || callersHtml
+    ? headerHtml + membersHtml + callersHtml
+    : `<div class="empty-state"><i class="bx bx-list-ul"></i><div class="empty-state-text">No queue data</div></div>`;
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── All Queues ─────────────────────────────────────────────────────────────────
+
+function renderAllQueues(el, data) {
+  const queues = [];
+  for (const line of data.stdout.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    const m = /^(\S+)\s+has\s+(\d+)\s+calls?(?:.*?in\s+'?([^'\s,]+)'?)?/.exec(t);
+    if (!m) continue;
+    const wm = /W:(\d+)/.exec(t), cm = /C:(\d+)/.exec(t), am = /A:(\d+)/.exec(t);
+    queues.push({ name: m[1], calls: parseInt(m[2], 10), strategy: m[3] || '—', waiting: wm ? +wm[1] : 0, completed: cm ? +cm[1] : 0, abandoned: am ? +am[1] : 0 });
+  }
+  let inner;
+  if (queues.length === 0) {
+    inner = `<div class="empty-state"><i class="bx bx-list-ul"></i><div class="empty-state-text">No queues found</div></div>`;
+  } else {
+    const rows = queues.map(q => `<tr>
+      <td><div class="queue-name">${esc(q.name)}</div><div class="queue-strategy">${esc(q.strategy)}</div></td>
+      <td class="text-center">${q.calls > 0 ? `<span class="count-badge">${q.calls}</span>` : '<span class="text-muted small">0</span>'}</td>
+      <td class="text-center">${q.waiting > 0 ? `<span class="count-badge">${q.waiting}</span>` : '<span class="text-muted small">0</span>'}</td>
+      <td class="text-center"><span class="count-badge count-badge--ok">${q.completed}</span></td>
+      <td class="text-center">${q.abandoned > 0 ? `<span class="count-badge">${q.abandoned}</span>` : '<span class="text-muted small">0</span>'}</td>
+    </tr>`).join('');
+    inner = `<table class="noc-table"><thead><tr><th>Queue</th><th>Active</th><th>Waiting</th><th>Done</th><th>Abandoned</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Channel Stats ──────────────────────────────────────────────────────────────
+
+function renderChannelStats(el, data) {
+  const rows = data.stdout.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^Peer\s/i.test(l))
+    .map(l => {
+      const c = l.split(/\s+/);
+      return `<tr>
+        <td class="peer-name">${esc(c[0] || '—')}</td>
+        <td class="ts">${esc(c[2] || '—')}</td>
+        <td class="text-center">${esc(c[3] || '—')}</td>
+        <td class="text-center text-danger">${esc(c[4] || '0')}</td>
+        <td class="text-center">${esc(c[7] || '—')}</td>
+        <td class="text-center text-danger">${esc(c[8] || '0')}</td>
+      </tr>`;
+    }).join('');
+  let inner = rows
+    ? `<table class="noc-table"><thead><tr><th>Peer</th><th>Duration</th><th>Recv Pkts</th><th>Recv Lost</th><th>Send Pkts</th><th>Send Lost</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<div class="empty-state"><i class="bx bx-stats"></i><div class="empty-state-text">No channel stats</div></div>`;
+  el.innerHTML = `<div class="noc-output">${inner}${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Verbose Channels ───────────────────────────────────────────────────────────
+
+function renderVerbose(el, data) {
+  const lines = data.stdout.split('\n');
+  const summary = lines.find(l => /active channel/i.test(l));
+  const chLines = lines.filter(l => /^(SIP|PJSIP|Local|DAHDI|IAX)\//i.test(l.trim()));
+  if (chLines.length === 0) {
+    el.innerHTML = `<div class="noc-output"><div class="empty-state"><i class="bx bx-phone-off"></i><div class="empty-state-text">No active channels</div></div>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+    return;
+  }
+  const sumMatch  = summary && /(\d+)\s+active channel/i.exec(summary);
+  const callMatch = summary && /(\d+)\s+active call/i.exec(summary);
+  const banner = sumMatch ? `<div class="channels-banner">
+    <span class="live-indicator"></span>
+    <span class="channels-count">${sumMatch[1]}</span>
+    <span class="channels-label">channels · ${callMatch ? callMatch[1] : '?'} calls</span>
+  </div>` : '';
+  const rows = chLines.map(l => {
+    const cols = l.trim().split(/\s{2,}/);
+    return `<tr>
+      <td class="ts" style="max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(cols[0] || '—')}</td>
+      <td>${esc(cols[1] || '—')}</td>
+      <td>${esc(cols[4] || cols[3] || '—')}</td>
+      <td>${esc(cols[5] || cols[6] || '—')}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="noc-output">${banner}<table class="noc-table"><thead><tr><th>Channel</th><th>Location</th><th>State</th><th>Application</th></tr></thead><tbody>${rows}</tbody></table>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Server Status ──────────────────────────────────────────────────────────────
+
+function renderServerStatus(el, data) {
+  const sections  = data.stdout.split(/\n---\n/);
+  const LABELS    = ['Asterisk Version', 'System Uptime', 'Asterisk Uptime', 'Active Channels', 'Inter-node Peers'];
+  let html = '<div class="noc-output">';
+  sections.forEach((sec, i) => {
+    const t = sec.trim();
+    if (!t) return;
+    html += `<div class="noc-section-header">${esc(LABELS[i] || `Section ${i + 1}`)}</div>`;
+    if (i === 3) {
+      const chM   = /(\d+)\s+active channel/i.exec(t);
+      const callM = /(\d+)\s+active call/i.exec(t);
+      if (chM) {
+        html += `<div class="summary-counters">
+          <div class="summary-item ok"><span class="sc-value">${chM[1]}</span><span class="sc-label">Channels</span></div>
+          <div class="summary-item ok"><span class="sc-value">${callM ? callM[1] : '—'}</span><span class="sc-label">Calls</span></div>
+        </div>`;
+      } else { html += `<pre class="raw-pre mb-2">${esc(t)}</pre>`; }
+    } else if (i === 4) {
+      const rows = t.split('\n').filter(l => l.trim()).map(l =>
+        `<tr>${l.trim().split(/\s+/).map(c => `<td class="ts">${esc(c)}</td>`).join('')}</tr>`
+      ).join('');
+      if (rows) html += `<table class="noc-table mb-1"><tbody>${rows}</tbody></table>`;
+    } else {
+      html += `<pre class="raw-pre mb-2">${esc(t)}</pre>`;
+    }
+  });
+  html += buildRawToggle(data.stdout, data.exitCode, data.durationMs) + '</div>';
+  el.innerHTML = html;
+}
+
+// ── Email Search ───────────────────────────────────────────────────────────────
+
+function renderEmailSearch(el, data) {
+  const lines = data.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    el.innerHTML = `<div class="noc-output"><div class="empty-state"><i class="bx bx-mail-send"></i><div class="empty-state-text">No email log entries found</div></div>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+    return;
+  }
+  const rows = lines.map(l => {
+    const parts  = l.split(/\s+/);
+    const ts     = parts.slice(0, 3).join(' ');
+    const toM    = /to=<([^>]+)>/.exec(l);
+    const statM  = /status=(\S+)/.exec(l);
+    const delayM = /delay=([^,\s]+)/.exec(l);
+    const st     = statM ? statM[1].replace(/,$/, '') : '—';
+    return `<tr>
+      <td class="ts">${esc(ts)}</td>
+      <td>${toM ? esc(toM[1]) : esc(parts.slice(4, 7).join(' '))}</td>
+      <td><span class="status-chip status-chip--${st === 'sent' ? 'ok' : 'warn'}">${esc(st)}</span></td>
+      <td class="ts">${esc(delayM ? delayM[1].replace(/,$/, '') : '—')}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="noc-output"><table class="noc-table">
+    <thead><tr><th>Date/Time</th><th>To</th><th>Status</th><th>Delay</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Kamailio Search ────────────────────────────────────────────────────────────
+
+function renderKamailioSearch(el, data) {
+  const lines = data.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    el.innerHTML = `<div class="noc-output"><div class="empty-state"><i class="bx bx-wifi-off"></i><div class="empty-state-text">No Kamailio registrations found</div></div>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+    return;
+  }
+  const rows = lines.map(l => {
+    const parts = l.split(/\s*\|\s*/).filter(Boolean);
+    if (parts.length >= 2) return `<tr><td class="ts">${esc(parts[0])}</td><td class="ts">${esc(parts[1])}</td></tr>`;
+    return `<tr><td colspan="2" class="ts">${esc(l)}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<div class="noc-output"><table class="noc-table">
+    <thead><tr><th>SIP URI</th><th>Registered IP</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+}
+
+// ── Recordings Search ──────────────────────────────────────────────────────────
+
+function renderRecordingsSearch(el, data) {
+  const lines = data.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    el.innerHTML = `<div class="noc-output"><div class="empty-state"><i class="bx bx-microphone-off"></i><div class="empty-state-text">No recordings found</div></div>${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}</div>`;
+    return;
+  }
+  const items = lines.map(l =>
+    `<div class="recording-item"><i class="bx bx-microphone"></i><span class="recording-name">${esc(l)}</span></div>`
+  ).join('');
+  el.innerHTML = `<div class="noc-output">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="count-badge count-badge--ok">${lines.length}</span>
+      <span class="text-muted small">recording${lines.length !== 1 ? 's' : ''} found</span>
+    </div>
+    <div class="recordings-list">${items}</div>
+    ${buildRawToggle(data.stdout, data.exitCode, data.durationMs)}
+  </div>`;
+}
+
+// ── Dispatch Table ─────────────────────────────────────────────────────────────
+
+const STRUCTURED_RENDERERS = {
+  peers:                renderPeers,
+  blf:                  renderBlf,
+  devstate:             renderDevstate,
+  channels:             renderChannels,
+  unreachable:          renderUnreachable,
+  unreachable_history:  renderUnreachableHistory,
+  unreachable_summary:  renderUnreachableSummary,
+  queue:                renderQueue,
+  all_queues:           renderAllQueues,
+  channel_stats:        renderChannelStats,
+  verbose:              renderVerbose,
+  server_status:        renderServerStatus,
+  email_search:         renderEmailSearch,
+  email_search_history: renderEmailSearch,
+  kamailio_search:      renderKamailioSearch,
+  recordings_search:    renderRecordingsSearch,
+};
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
