@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
+app.get('/api/version', (req, res) => res.json({ version: require('./package.json').version }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/nodes', require('./routes/nodes'));
 

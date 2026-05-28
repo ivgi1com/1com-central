@@ -99,5 +99,13 @@ function renderChart(nodes) {
   chart.render();
 }
 
+fetch('/api/version')
+  .then((r) => r.json())
+  .then(({ version }) => {
+    const el = document.getElementById('app-version');
+    if (el) el.textContent = `v${version}`;
+  })
+  .catch(() => {});
+
 refresh();
 setInterval(refresh, 30_000);
