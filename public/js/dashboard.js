@@ -178,12 +178,14 @@ function isStale(lastUpdated) {
   return lastUpdated && Date.now() - new Date(lastUpdated).getTime() > 90_000;
 }
 
-function statusBadge(status, lastUpdated) {
-  const stale = isStale(lastUpdated) ? ' <span class="badge bg-secondary ms-1">stale</span>' : '';
-  if (status === 'ok') return `<span class="badge bg-success">ok</span>${stale}`;
-  if (status === 'asterisk_down') return `<span class="badge bg-warning text-dark">asterisk down</span>${stale}`;
-  return `<span class="badge bg-danger">unreachable</span>${stale}`;
+function statusPill(status, lastUpdated) {
+  const stale = isStale(lastUpdated) ? ' <span class="noc-pill noc-pill--stale">stale</span>' : '';
+  if (status === 'ok')            return `<span class="noc-pill noc-pill--ok">Online</span>${stale}`;
+  if (status === 'asterisk_down') return `<span class="noc-pill noc-pill--warn">Degraded</span>${stale}`;
+  return `<span class="noc-pill noc-pill--crit">Unreachable</span>${stale}`;
 }
+
+function statusBadge(status, lastUpdated) { return statusPill(status, lastUpdated); }
 
 function progressBarColor(pct) {
   if (pct == null) return 'bg-secondary';
@@ -289,27 +291,31 @@ function renderTable(nodes) {
   const container = document.getElementById('nodes-table-container');
   if (!container) return;
   if (nodes.length === 0) {
-    container.innerHTML = '<p class="text-muted p-3">No nodes configured.</p>';
+    container.innerHTML = `
+      <div class="noc-empty-panel">
+        <i class="bx bx-server"></i>
+        <p>No nodes configured.</p>
+      </div>`;
     return;
   }
   const rows = nodes.map(n => `
     <tr style="cursor:pointer" onclick="location.hash='#tenants/${n.id}'">
-      <td><strong>${esc(n.name)}</strong></td>
-      <td>${esc(n.host)}</td>
-      <td>${statusBadge(n.status, n.last_updated)}</td>
-      <td>${n.active_calls ?? '-'}</td>
-      <td>${n.sip_peers ?? '-'}</td>
-      <td>${n.load_avg ?? '-'}</td>
-      <td>${n.uptime ? esc(n.uptime) : '-'}</td>
-      <td>${n.asterisk_version ? esc(n.asterisk_version) : '-'}</td>
+      <td><span class="noc-node-name">${esc(n.name)}</span></td>
+      <td><span class="noc-host">${esc(n.host)}</span></td>
+      <td>${statusPill(n.status, n.last_updated)}</td>
+      <td><span class="noc-metric">${n.active_calls ?? '—'}</span></td>
+      <td><span class="noc-metric">${n.sip_peers ?? '—'}</span></td>
+      <td><span class="noc-metric-mono">${n.load_avg ?? '—'}</span></td>
+      <td><span class="noc-uptime">${n.uptime ? esc(n.uptime) : '—'}</span></td>
+      <td><span class="noc-version">${n.asterisk_version ? esc(n.asterisk_version) : '—'}</span></td>
     </tr>`).join('');
   container.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-light">
+    <table class="noc-data-grid">
+      <thead>
         <tr>
-          <th>Name</th><th>Host</th><th>Status</th>
-          <th>Active Calls</th><th>SIP Peers</th>
-          <th>Load Avg</th><th>Uptime</th><th>Version</th>
+          <th>Node</th><th>Host</th><th>Status</th>
+          <th>Calls</th><th>SIP Peers</th>
+          <th>Load</th><th>Uptime</th><th>Version</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -327,11 +333,40 @@ function renderChart(nodes) {
     return;
   }
   chart = new ApexCharts(el, {
-    chart: { type: 'bar', height: 300, toolbar: { show: false } },
-    series, xaxis: { categories },
-    colors: ['#696cff'],
-    plotOptions: { bar: { borderRadius: 4 } },
+    chart: {
+      type: 'bar',
+      height: 280,
+      toolbar: { show: false },
+      background: 'transparent',
+      foreColor: '#637494',
+    },
+    theme: { mode: 'dark' },
+    series,
+    xaxis: {
+      categories,
+      labels: { style: { colors: '#637494', fontSize: '11px' } },
+      axisBorder: { color: 'rgba(88,120,170,0.15)' },
+      axisTicks: { color: 'rgba(88,120,170,0.15)' },
+    },
+    yaxis: { labels: { style: { colors: '#637494' } } },
+    grid: { borderColor: 'rgba(88,120,170,0.10)', strokeDashArray: 4 },
+    colors: ['#22d3ee'],
+    plotOptions: { bar: { borderRadius: 5, columnWidth: '45%' } },
     dataLabels: { enabled: false },
+    tooltip: {
+      theme: 'dark',
+      style: { fontSize: '12px' },
+    },
+    fill: {
+      type: 'gradient',
+      gradient: {
+        shade: 'dark',
+        type: 'vertical',
+        shadeIntensity: 0.3,
+        gradientToColors: ['#4f6ef7'],
+        stops: [0, 100],
+      },
+    },
   });
   chart.render();
 }
