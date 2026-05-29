@@ -390,34 +390,40 @@ async function loadNodesList() {
     container.innerHTML = '<p class="text-muted">No nodes configured.</p>';
     return;
   }
-  const rows = nodes.map(n => `
-    <tr style="cursor:pointer" onclick="location.hash='#tenants/${n.id}'">
-      <td><strong>${esc(n.name)}</strong></td>
-      <td>${esc(n.host)}</td>
-      <td>${statusBadge(n.status, n.last_updated)}</td>
-      <td>${n.active_calls ?? '-'}</td>
-      <td>${(n.tenants || []).length > 0
-        ? (n.tenants || []).slice(0, 6).map(t => `<span class="badge bg-label-primary me-1">${esc(t)}</span>`).join('') + ((n.tenants || []).length > 6 ? `<span class="text-muted small">+${n.tenants.length - 6} more</span>` : '')
-        : `<span class="text-muted">${n.sip_peers ?? '-'} peers</span>`}</td>
-      <td>${n.load_avg ?? '-'}</td>
-      <td>${n.uptime ? esc(n.uptime) : '-'}</td>
-    </tr>`).join('');
   container.innerHTML = `
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
         <h5 class="card-title m-0">Nodes</h5>
-        <small class="text-muted">Click a row to view tenants</small>
+        <small style="color:var(--nt-muted);font-size:0.72rem">Click row → tenants</small>
       </div>
       <div class="card-body p-0">
-        <table class="table table-hover align-middle mb-0">
-          <thead class="table-light">
+        <table class="noc-data-grid">
+          <thead>
             <tr>
-              <th>Name</th><th>Host</th><th>Status</th>
-              <th>Active Calls</th><th>Tenants</th>
-              <th>Load Avg</th><th>Uptime</th>
+              <th>Node</th><th>Host</th><th>Status</th>
+              <th>Calls</th><th>Tenants / Peers</th>
+              <th>Load</th><th>Uptime</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>
+            ${nodes.map(n => `
+            <tr style="cursor:pointer" onclick="location.hash='#tenants/${n.id}'">
+              <td><span class="noc-node-name">${esc(n.name)}</span></td>
+              <td><span class="noc-host">${esc(n.host)}</span></td>
+              <td>${statusPill(n.status, n.last_updated)}</td>
+              <td><span class="noc-metric">${n.active_calls ?? '—'}</span></td>
+              <td>${(n.tenants || []).length > 0
+                ? (n.tenants || []).slice(0, 5).map(t =>
+                    \`<span class="badge bg-label-primary me-1" style="font-size:.65rem">\${esc(t)}</span>\`
+                  ).join('') + ((n.tenants || []).length > 5
+                    ? \`<span style="color:var(--nt-muted);font-size:.72rem">+\${n.tenants.length - 5}</span>\`
+                    : '')
+                : \`<span style="color:var(--nt-muted);font-size:.78rem">\${n.sip_peers ?? '—'} peers</span>\`
+              }</td>
+              <td><span class="noc-metric-mono">${n.load_avg ?? '—'}</span></td>
+              <td><span class="noc-uptime">${n.uptime ? esc(n.uptime) : '—'}</span></td>
+            </tr>`).join('')}
+          </tbody>
         </table>
       </div>
     </div>`;
@@ -533,9 +539,10 @@ async function loadTenants(nodeId) {
 
   const { node, tenants } = data;
   const header = `
-    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
+    <div class="noc-page-header">
       <a href="#nodes" class="btn btn-sm btn-outline-secondary"><i class="bx bx-arrow-back me-1"></i>Nodes</a>
-      <h4 class="mb-0">${esc(node)}</h4>
+      <span class="noc-breadcrumb-sep">›</span>
+      <span class="noc-page-title">${esc(node)}</span>
       <a href="#node-${nodeId}" class="btn btn-sm btn-outline-secondary ms-auto">
         <i class="bx bx-server me-1"></i>System Info
       </a>
@@ -548,13 +555,13 @@ async function loadTenants(nodeId) {
 
   container.innerHTML = `
     ${header}
-    <div class="row mb-4">
-      <div class="col-md-4">
-        <input type="text" class="form-control" placeholder="Search tenants…" id="tenant-search" autocomplete="off">
+    <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+      <div style="position:relative;flex:0 0 260px">
+        <i class="bx bx-search" style="position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--nt-muted);pointer-events:none"></i>
+        <input type="text" class="form-control" style="padding-left:2.2rem"
+               placeholder="Search tenants…" id="tenant-search" autocomplete="off">
       </div>
-      <div class="col d-flex align-items-center">
-        <small class="text-muted ms-2" id="tenant-count"></small>
-      </div>
+      <small id="tenant-count" style="color:var(--nt-muted);font-size:0.75rem"></small>
     </div>
     <div class="row g-3" id="tenants-grid"></div>`;
 
@@ -575,19 +582,16 @@ async function loadTenants(nodeId) {
     }
     grid.innerHTML = filtered.map(t => `
       <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-        <div class="card h-100" style="cursor:pointer"
+        <div class="noc-tenant-card"
              onclick="location.hash='#tenant/${nodeId}/${encodeURIComponent(t.name)}'">
-          <div class="card-body d-flex align-items-center gap-3">
-            <div class="avatar flex-shrink-0">
-              <span class="avatar-initial rounded bg-label-primary">
-                <i class="bx bx-building"></i>
-              </span>
-            </div>
-            <div class="overflow-hidden">
-              <h6 class="mb-0 text-truncate">${esc(t.name)}</h6>
-              <small class="text-muted">Tenant</small>
-            </div>
+          <div class="noc-tenant-icon">
+            <i class="bx bx-building"></i>
           </div>
+          <div style="min-width:0;flex:1">
+            <div class="noc-tenant-name">${esc(t.name)}</div>
+            <div class="noc-tenant-sub">Tenant</div>
+          </div>
+          <i class="bx bx-chevron-right" style="color:var(--nt-dim);flex-shrink:0"></i>
         </div>
       </div>`).join('');
   }
@@ -640,64 +644,64 @@ async function loadTenantDashboard(nodeId, tenant) {
     const icon  = CATEGORY_ICONS[cat] || 'bx-cog';
     const cards = acts.map(a => buildActionCard(a, nodeId, tenant)).join('');
     return `
-      <div class="col-12 mt-2 mb-1">
-        <h6 class="text-muted text-uppercase small d-flex align-items-center gap-2">
+      <div class="col-12 mt-2 mb-0">
+        <div class="noc-category-heading">
           <i class="bx ${esc(icon)}"></i>${esc(cat)}
-        </h6>
+        </div>
       </div>
       ${cards}`;
   }).join('');
 
   container.innerHTML = `
-    <div class="d-flex align-items-center mb-4 gap-2 flex-wrap">
+    <div class="noc-page-header">
       <a href="#tenants/${nodeId}" class="btn btn-sm btn-outline-secondary">
         <i class="bx bx-arrow-back me-1"></i>${esc(node)}
       </a>
-      <i class="bx bx-chevron-right text-muted"></i>
-      <h4 class="mb-0 d-flex align-items-center gap-2">
-        <span class="badge bg-label-primary" style="font-size:.9rem;font-weight:500">${esc(tenant)}</span>
-        <span class="text-muted fw-normal" style="font-size:.95rem">on ${esc(node)}</span>
-      </h4>
+      <span class="noc-breadcrumb-sep">›</span>
+      <span class="noc-tenant-badge">${esc(tenant)}</span>
+      <span style="color:var(--nt-muted);font-size:0.82rem">on ${esc(node)}</span>
     </div>
     <div class="row g-3">${sections}</div>`;
 }
 
 function buildActionCard(action, nodeId, tenant) {
   const cid    = `ac-${action.name}`;
-  const btnCls = action.destructive ? 'btn-danger' : 'btn-primary';
-  const btnIco = action.destructive ? 'bx-error-alt' : 'bx-play';
   const nid    = parseInt(nodeId, 10);
   const tEnc   = encodeURIComponent(tenant);
+  const isDest = action.destructive;
 
   const paramHtml = (action.params || []).map(p => `
     <div class="mb-2">
-      <label class="form-label small mb-1">${esc(p.label)}</label>
+      <label class="form-label small mb-1" style="font-size:.72rem;color:var(--nt-muted)">${esc(p.label)}</label>
       <input type="text" class="form-control form-control-sm"
              id="${cid}-p-${p.name}"
              placeholder="${esc(p.placeholder || '')}"
              autocomplete="off">
     </div>`).join('');
 
-  const clickFn = action.destructive
+  const clickFn = isDest
     ? `confirmAction('${action.name}',${nid},'${tEnc}')`
     : `runAction('${action.name}',${nid},'${tEnc}')`;
 
+  const btnCls  = isDest ? 'noc-run-btn--danger' : 'noc-run-btn--primary';
+  const btnIcon = isDest ? 'bx-error-alt' : 'bx-play';
+
   return `
     <div class="col-12 col-md-6 col-xl-4">
-      <div class="card h-100">
-        <div class="card-header d-flex align-items-start justify-content-between py-2 gap-2">
-          <div class="flex-grow-1 overflow-hidden">
-            <h6 class="mb-0">${esc(action.label)}</h6>
-            <small class="text-muted">${esc(action.description)}</small>
+      <div class="noc-action-card">
+        <div class="noc-action-card__header">
+          <div style="flex:1;min-width:0">
+            <div class="noc-action-card__title">${esc(action.label)}</div>
+            <div class="noc-action-card__desc">${esc(action.description)}</div>
           </div>
-          <button class="btn btn-sm ${btnCls} flex-shrink-0" onclick="${clickFn}">
-            <i class="bx ${btnIco} me-1"></i>Run
+          <button class="noc-run-btn ${btnCls}" onclick="${clickFn}">
+            <i class="bx ${btnIcon}"></i>Run
           </button>
         </div>
-        <div class="card-body py-2" id="${cid}-body">
+        <div class="noc-action-card__body" id="${cid}-body">
           ${paramHtml}
-          <div id="${cid}-out" class="d-none mt-2"></div>
         </div>
+        <div class="noc-action-card__out d-none" id="${cid}-out"></div>
       </div>
     </div>`;
 }
