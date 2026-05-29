@@ -90,6 +90,80 @@ function renderSummaryCards(nodes) {
   countUp(document.getElementById('noc-val-peers'), totalPeers);
 }
 
+function renderClusterOverview(nodes) {
+  const el = document.getElementById('cluster-overview');
+  if (!el) return;
+
+  const online   = nodes.filter(n => n.status === 'ok').length;
+  const total    = nodes.length;
+  const warnings = nodes.filter(n => n.status === 'asterisk_down').length;
+  const down     = nodes.filter(n => n.status === 'unreachable').length;
+
+  const lastTs = nodes.reduce((mx, n) => {
+    if (!n.last_updated) return mx;
+    const t = new Date(n.last_updated).getTime();
+    return t > mx ? t : mx;
+  }, 0);
+  const syncAgo   = lastTs ? Math.round((Date.now() - lastTs) / 1000) : null;
+  const syncLabel = syncAgo === null ? '—'
+    : syncAgo < 5  ? 'Just now'
+    : syncAgo < 60 ? `${syncAgo}s ago`
+    : `${Math.round(syncAgo / 60)}m ago`;
+
+  const healthColor = down > 0 ? 'var(--nt-red)'
+    : warnings > 0 ? 'var(--nt-amber)'
+    : total > 0    ? 'var(--nt-emerald)'
+    : 'var(--nt-muted)';
+  const healthLabel = down > 0
+    ? `${down} Node${down > 1 ? 's' : ''} Unreachable`
+    : warnings > 0
+    ? `${warnings} Node${warnings > 1 ? 's' : ''} Degraded`
+    : total > 0 ? 'All Systems Operational' : 'No Nodes Configured';
+
+  el.innerHTML = `
+    <div class="noc-cluster-overview">
+      <div class="nco-header">
+        <div class="nco-brand">
+          <svg class="nco-logo" viewBox="0 0 24 24">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.42 2 2 0 0 1 3.6 1.24h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.06 6.06l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/>
+          </svg>
+          <div>
+            <div class="nco-title">1COM Central</div>
+            <div class="nco-sub">Asterisk Cluster Monitor &mdash; ${total} node${total !== 1 ? 's' : ''} configured &bull; 30s poll</div>
+          </div>
+        </div>
+        <div class="nco-health" style="--health-color:${healthColor}">
+          <span class="nco-health-dot"></span>
+          <span class="nco-health-label">${esc(healthLabel)}</span>
+        </div>
+      </div>
+      <div class="nco-stats">
+        <div class="nco-stat">
+          <span class="nco-stat-value">${online}<span class="nco-stat-total"> / ${total}</span></span>
+          <span class="nco-stat-label">Online</span>
+        </div>
+        ${warnings > 0 ? `<div class="nco-stat nco-stat--warn">
+          <span class="nco-stat-value">${warnings}</span>
+          <span class="nco-stat-label">Degraded</span>
+        </div>` : ''}
+        ${down > 0 ? `<div class="nco-stat nco-stat--crit">
+          <span class="nco-stat-value">${down}</span>
+          <span class="nco-stat-label">Unreachable</span>
+        </div>` : ''}
+        <div class="nco-stat">
+          <span class="nco-stat-value">${esc(syncLabel)}</span>
+          <span class="nco-stat-label">Last Sync</span>
+        </div>
+      </div>
+      <div class="nco-actions">
+        <a href="#nodes" class="nco-btn nco-btn--primary">
+          <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          Manage Nodes
+        </a>
+      </div>
+    </div>`;
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function esc(str) {
@@ -206,6 +280,7 @@ async function refreshDashboard() {
     nodes = await res.json();
   } catch (_) { return; }
   renderSummaryCards(nodes);
+  renderClusterOverview(nodes);
   renderTable(nodes);
   renderChart(nodes);
 }
