@@ -3,6 +3,93 @@ let _refreshInterval = null;
 const API       = (window.BASE_PATH || '') + '/api';
 const ADMIN_API = (window.BASE_PATH || '') + '/api/admin';
 
+// ── NOC Summary Cards ─────────────────────────────────────────────────────────
+
+function countUp(el, target, duration) {
+  if (!el) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) { el.textContent = target.toLocaleString(); return; }
+  const d = duration || 900;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min((now - start) / d, 1);
+    // ease-out-quart
+    const ease = 1 - Math.pow(1 - t, 4);
+    el.textContent = Math.round(ease * target).toLocaleString();
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function renderSummaryCards(nodes) {
+  const el = document.getElementById('noc-summary');
+  if (!el) return;
+
+  const online     = nodes.filter(n => n.status === 'ok').length;
+  const total      = nodes.length;
+  const totalCalls = nodes.reduce((s, n) => s + (n.active_calls ?? 0), 0);
+  const totalPeers = nodes.reduce((s, n) => s + (n.sip_peers ?? 0), 0);
+
+  const healthLabel = online === total && total > 0 ? 'Cluster: Healthy'
+    : online === 0 && total > 0 ? 'Cluster: All Down'
+    : `${total - online} node${total - online !== 1 ? 's' : ''} offline`;
+
+  el.innerHTML = `
+    <div class="noc-summary-wrapper">
+      <div class="noc-cards-grid">
+
+        <div class="noc-card noc-card--nodes">
+          <div class="noc-card__header">
+            <span class="noc-card__label">Online Nodes</span>
+            <span class="noc-card__icon">
+              <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            </span>
+          </div>
+          <div class="noc-card__value">
+            <span id="noc-val-nodes">${online.toLocaleString()}</span><span style="font-size:1.1rem;font-weight:400;opacity:0.45"> / ${total}</span>
+          </div>
+          <div class="noc-card__footer">
+            <span class="noc-card__sub">${healthLabel}</span>
+            <span class="noc-badge"><span class="noc-badge__dot"></span>Live</span>
+          </div>
+        </div>
+
+        <div class="noc-card noc-card--calls">
+          <div class="noc-card__header">
+            <span class="noc-card__label">Active Calls</span>
+            <span class="noc-card__icon">
+              <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.42 2 2 0 0 1 3.6 1.24h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.83a16 16 0 0 0 6.06 6.06l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>
+            </span>
+          </div>
+          <div class="noc-card__value" id="noc-val-calls">${totalCalls.toLocaleString()}</div>
+          <div class="noc-card__footer">
+            <span class="noc-card__sub">Across all PBX nodes</span>
+            <span class="noc-badge"><span class="noc-badge__dot"></span>Real-time</span>
+          </div>
+        </div>
+
+        <div class="noc-card noc-card--peers">
+          <div class="noc-card__header">
+            <span class="noc-card__label">Registered SIP Peers</span>
+            <span class="noc-card__icon">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/><circle cx="19" cy="8" r="3"/><path d="M22 12h-3"/><circle cx="5" cy="8" r="3"/><path d="M2 12h3"/></svg>
+            </span>
+          </div>
+          <div class="noc-card__value" id="noc-val-peers">${totalPeers.toLocaleString()}</div>
+          <div class="noc-card__footer">
+            <span class="noc-card__sub">Connected endpoints</span>
+            <span class="noc-badge"><span class="noc-badge__dot"></span>Registered</span>
+          </div>
+        </div>
+
+      </div>
+    </div>`;
+
+  countUp(document.getElementById('noc-val-nodes'), online);
+  countUp(document.getElementById('noc-val-calls'), totalCalls);
+  countUp(document.getElementById('noc-val-peers'), totalPeers);
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function esc(str) {
@@ -118,6 +205,7 @@ async function refreshDashboard() {
     if (!res.ok) return;
     nodes = await res.json();
   } catch (_) { return; }
+  renderSummaryCards(nodes);
   renderTable(nodes);
   renderChart(nodes);
 }

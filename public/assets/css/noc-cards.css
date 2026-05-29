@@ -1,0 +1,211 @@
+/* NOC Summary Cards — self-contained dark component */
+/* Design tokens ─────────────────────────────────────────────── */
+.noc-summary-wrapper {
+  --noc-bg:          oklch(0.12 0.025 260);
+  --noc-surface:     oklch(0.17 0.03 260 / 0.65);
+  --noc-border:      oklch(0.35 0.06 260 / 0.25);
+  --noc-ink:         oklch(0.94 0.01 260);
+  --noc-muted:       oklch(0.60 0.02 260);
+
+  --noc-emerald:     oklch(0.82 0.14 152);
+  --noc-emerald-dim: oklch(0.82 0.14 152 / 0.18);
+  --noc-azure:       oklch(0.83 0.12 210);
+  --noc-azure-dim:   oklch(0.83 0.12 210 / 0.18);
+  --noc-violet:      oklch(0.79 0.14 296);
+  --noc-violet-dim:  oklch(0.79 0.14 296 / 0.18);
+
+  --noc-radius:      14px;
+  --noc-ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Wrapper ────────────────────────────────────────────────────── */
+.noc-summary-wrapper {
+  background: var(--noc-bg);
+  border-radius: var(--noc-radius);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle background depth — no aggressive gradients */
+.noc-summary-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 80% at 15% 50%, oklch(0.20 0.04 252 / 0.4) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 70% at 85% 50%, oklch(0.18 0.04 270 / 0.3) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Grid ───────────────────────────────────────────────────────── */
+.noc-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .noc-cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .noc-cards-grid { grid-template-columns: 1fr; }
+  .noc-summary-wrapper { padding: 1rem; }
+}
+
+/* Card ───────────────────────────────────────────────────────── */
+.noc-card {
+  background: var(--noc-surface);
+  border: 1px solid var(--noc-border);
+  border-radius: var(--noc-radius);
+  padding: 1.375rem 1.5rem 1.25rem;
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  transition: transform 0.3s var(--noc-ease-out), box-shadow 0.3s var(--noc-ease-out);
+  opacity: 0;
+  animation: nocSlideUp 0.45s var(--noc-ease-out) forwards;
+}
+
+.noc-card:nth-child(1) { animation-delay: 0s; }
+.noc-card:nth-child(2) { animation-delay: 0.1s; }
+.noc-card:nth-child(3) { animation-delay: 0.2s; }
+
+/* Top accent bar replaces side-stripe */
+.noc-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 1.5rem; right: 1.5rem;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--card-accent);
+  opacity: 0.7;
+}
+
+/* Per-card accent color */
+.noc-card--nodes  { --card-accent: var(--noc-emerald); --card-glow: var(--noc-emerald-dim); }
+.noc-card--calls  { --card-accent: var(--noc-azure);   --card-glow: var(--noc-azure-dim); }
+.noc-card--peers  { --card-accent: var(--noc-violet);  --card-glow: var(--noc-violet-dim); }
+
+/* Hover */
+.noc-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px var(--card-glow), 0 0 0 1px var(--card-accent) inset;
+}
+
+/* Card header row */
+.noc-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.875rem;
+}
+
+.noc-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--noc-muted);
+  text-transform: uppercase;
+}
+
+.noc-card__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--card-glow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.noc-card__icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--card-accent);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Value */
+.noc-card__value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--noc-ink);
+  letter-spacing: -0.03em;
+  margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtitle row */
+.noc-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.noc-card__sub {
+  font-size: 0.78rem;
+  color: var(--noc-muted);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Live badge */
+.noc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--card-accent);
+  flex-shrink: 0;
+}
+
+.noc-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--card-accent);
+  flex-shrink: 0;
+}
+
+/* Pulse only on the Active Calls card */
+.noc-card--calls .noc-badge__dot {
+  animation: nocPulse 2.5s ease-in-out infinite;
+}
+
+/* Animations ─────────────────────────────────────────────────── */
+@keyframes nocSlideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nocPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--noc-azure-dim); }
+  50%       { box-shadow: 0 0 0 5px transparent; opacity: 0.5; }
+}
+
+/* Reduced motion ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .noc-card {
+    animation: none;
+    opacity: 1;
+    transition: none;
+  }
+  .noc-card:hover { transform: none; }
+  .noc-card--calls .noc-badge__dot { animation: none; }
+}
