@@ -195,21 +195,22 @@ function progressBarColor(pct) {
 }
 
 function progressBar(pct) {
-  if (pct == null) return '<span class="text-muted">-</span>';
-  const color = progressBarColor(pct);
-  return `<div class="fw-bold mb-1">${pct}%</div>
-    <div class="progress" style="height:6px">
-      <div class="progress-bar ${color}" style="width:${Math.min(pct, 100)}%"></div>
-    </div>`;
+  if (pct == null) return '<span style="color:var(--nt-muted)">—</span>';
+  const cls = pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : 'ok';
+  return `<div class="noc-progress-wrap">
+    <div class="noc-progress-pct">${pct}%</div>
+    <div class="noc-progress-bar-track">
+      <div class="noc-progress-bar-fill noc-progress-bar-fill--${cls}"
+           style="width:${Math.min(pct, 100)}%"></div>
+    </div>
+  </div>`;
 }
 
 function metricCard(label, value, sub) {
-  return `<div class="card h-100">
-    <div class="card-body text-center">
-      <div class="text-muted small mb-1">${label}</div>
-      <div class="fs-4 fw-bold">${value}</div>
-      ${sub ? `<div class="text-muted small mt-1">${sub}</div>` : ''}
-    </div>
+  return `<div class="noc-metric-card">
+    <div class="nmc-label">${label}</div>
+    <div class="nmc-value">${value}</div>
+    ${sub ? `<div class="nmc-sub">${sub}</div>` : ''}
   </div>`;
 }
 
@@ -441,57 +442,72 @@ async function loadNodeDetail(id) {
   const lastSeen  = n.last_updated ? new Date(n.last_updated).toLocaleTimeString() : '-';
 
   container.innerHTML = `
-    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
-      <a href="#nodes" class="btn btn-sm btn-outline-secondary"><i class="bx bx-arrow-back me-1"></i>Nodes</a>
-      <h4 class="mb-0">${esc(n.name)}</h4>
-      ${statusBadge(n.status, n.last_updated)}
+    <div class="noc-page-header">
+      <a href="#nodes" class="btn btn-sm btn-outline-secondary">
+        <i class="bx bx-arrow-back me-1"></i>Nodes
+      </a>
+      <span class="noc-breadcrumb-sep">›</span>
+      <span class="noc-page-title">${esc(n.name)}</span>
+      ${statusPill(n.status, n.last_updated)}
       <a href="#tenants/${id}" class="btn btn-sm btn-primary ms-auto">
         <i class="bx bx-building me-1"></i>Tenants
       </a>
-      <small class="text-muted">Last updated: ${lastSeen}</small>
+      <small style="color:var(--nt-muted);font-size:0.72rem">Updated ${lastSeen}</small>
     </div>
 
-    <h6 class="text-muted text-uppercase small mb-2">Asterisk</h6>
+    <div class="noc-section-title">Asterisk</div>
     <div class="row g-3 mb-4">
-      <div class="col-6 col-md-4 col-lg-3">${metricCard('Active Calls', n.active_calls ?? '-')}</div>
       <div class="col-6 col-md-4 col-lg-3">
-        <div class="card h-100">
-          <div class="card-body text-center">
-            <div class="text-muted small mb-1">SIP Peers</div>
-            <div class="fs-4 fw-bold mb-2">${n.sip_peers ?? '-'}</div>
-            <div class="d-flex flex-wrap gap-1 justify-content-center">
-              ${(n.tenants || []).map(t => `<span class="badge bg-label-primary" style="cursor:pointer" onclick="location.hash='#tenant/${id}/${encodeURIComponent(t)}'">${esc(t)}</span>`).join('')}
-            </div>
+        ${metricCard('Active Calls', `<span style="color:var(--nt-cyan)">${n.active_calls ?? '—'}</span>`)}
+      </div>
+      <div class="col-6 col-md-4 col-lg-3">
+        <div class="noc-metric-card">
+          <div class="nmc-label">SIP Peers</div>
+          <div class="nmc-value" style="color:var(--nt-violet)">${n.sip_peers ?? '—'}</div>
+          <div class="d-flex flex-wrap gap-1 mt-2">
+            ${(n.tenants || []).map(t => `<span class="badge bg-label-primary" style="cursor:pointer;font-size:.65rem"
+              onclick="location.hash='#tenant/${id}/${encodeURIComponent(t)}'">${esc(t)}</span>`).join('')}
           </div>
         </div>
       </div>
-      <div class="col-6 col-md-4 col-lg-3">${metricCard('Version', n.asterisk_version ? esc(n.asterisk_version) : '-')}</div>
+      <div class="col-6 col-md-4 col-lg-3">
+        ${metricCard('Version', n.asterisk_version ? `<span style="font-size:1rem;font-family:monospace">${esc(n.asterisk_version)}</span>` : '—')}
+      </div>
     </div>
 
-    <h6 class="text-muted text-uppercase small mb-2">System</h6>
+    <div class="noc-section-title">System</div>
     <div class="row g-3 mb-4">
       <div class="col-6 col-md-4 col-lg-3">
-        <div class="card h-100"><div class="card-body text-center">
-          <div class="text-muted small mb-1">CPU</div>${progressBar(n.cpu_pct)}
-        </div></div>
+        <div class="noc-metric-card">
+          <div class="nmc-label">CPU</div>
+          ${progressBar(n.cpu_pct)}
+        </div>
       </div>
       <div class="col-6 col-md-4 col-lg-3">
-        <div class="card h-100"><div class="card-body text-center">
-          <div class="text-muted small mb-1">Memory</div>${progressBar(memPct)}
-          <div class="text-muted small mt-1">${memLabel}</div>
-        </div></div>
+        <div class="noc-metric-card">
+          <div class="nmc-label">Memory</div>
+          ${progressBar(memPct)}
+          <div class="nmc-sub">${memLabel}</div>
+        </div>
       </div>
       <div class="col-6 col-md-4 col-lg-3">
-        <div class="card h-100"><div class="card-body text-center">
-          <div class="text-muted small mb-1">Disk /</div>${progressBar(n.disk_use_pct)}
-          ${n.disk_avail ? `<div class="text-muted small mt-1">${esc(n.disk_avail)} free</div>` : ''}
-        </div></div>
+        <div class="noc-metric-card">
+          <div class="nmc-label">Disk /</div>
+          ${progressBar(n.disk_use_pct)}
+          ${n.disk_avail ? `<div class="nmc-sub">${esc(n.disk_avail)} free</div>` : ''}
+        </div>
       </div>
-      <div class="col-6 col-md-4 col-lg-3">${metricCard('Load Avg', n.load_avg ?? '-')}</div>
+      <div class="col-6 col-md-4 col-lg-3">
+        ${metricCard('Load Avg', n.load_avg ? `<span style="font-family:monospace;font-size:1.1rem">${esc(n.load_avg)}</span>` : '—')}
+      </div>
     </div>
     <div class="row g-3">
-      <div class="col-12 col-md-6">${metricCard('Uptime', n.uptime ? esc(n.uptime) : '-')}</div>
-      <div class="col-12 col-md-6">${metricCard('Host', esc(n.host))}</div>
+      <div class="col-12 col-md-6">
+        ${metricCard('Uptime', n.uptime ? `<span style="font-size:0.95rem">${esc(n.uptime)}</span>` : '—')}
+      </div>
+      <div class="col-12 col-md-6">
+        ${metricCard('Host', `<span style="font-family:monospace;font-size:0.95rem">${esc(n.host)}</span>`)}
+      </div>
     </div>`;
 }
 
