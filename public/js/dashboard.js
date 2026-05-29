@@ -549,7 +549,7 @@ async function loadTenants(nodeId) {
     </div>`;
 
   if (!tenants || tenants.length === 0) {
-    container.innerHTML = header + '<div class="alert alert-info">No tenants found on this node.</div>';
+    container.innerHTML = header + `<div class="noc-empty-panel"><i class="bx bx-building" style="opacity:0.3"></i><p>No tenants found on this node.</p></div>`;
     return;
   }
 
@@ -734,7 +734,7 @@ async function runAction(actionName, nodeId, tenantEncoded) {
     const data = await res.json();
     renderActionResult(outEl, data);
   } catch (err) {
-    outEl.innerHTML = `<div class="alert alert-danger py-2 small mb-0">Error: ${esc(err.message)}</div>`;
+    outEl.innerHTML = `<div style="padding:.5rem .75rem;background:var(--nt-red-g);border:1px solid rgba(248,113,113,.25);border-radius:8px;color:var(--nt-red);font-size:.76rem"><i class="bx bx-error me-1"></i>Error: ${esc(err.message)}</div>`;
   }
 }
 
@@ -794,14 +794,14 @@ function confirmAction(actionName, nodeId, tenantEncoded) {
   if (!outEl) return;
   outEl.classList.remove('d-none');
   outEl.innerHTML = `
-    <div class="alert alert-danger py-2 mb-0">
-      <div class="fw-bold mb-2"><i class="bx bx-error me-1"></i>Destructive action — confirm?</div>
+    <div style="padding:.75rem 1rem;background:var(--nt-red-g);border:1px solid rgba(248,113,113,.25);border-radius:8px">
+      <div style="font-weight:600;font-size:.8rem;color:var(--nt-red);margin-bottom:.6rem"><i class="bx bx-error me-1"></i>Destructive action — confirm?</div>
       <div class="d-flex gap-2">
-        <button class="btn btn-sm btn-danger"
+        <button class="noc-run-btn noc-run-btn--danger"
                 onclick="runAction('${actionName}',${nodeId},'${tenantEncoded}')">
-          Confirm
+          <i class="bx bx-check"></i>Confirm
         </button>
-        <button class="btn btn-sm btn-outline-secondary"
+        <button class="noc-run-btn" style="background:rgba(88,120,170,.10);border:1px solid var(--nt-border-md)!important;color:var(--nt-muted)"
                 onclick="document.getElementById('${cid}-out').classList.add('d-none')">
           Cancel
         </button>
