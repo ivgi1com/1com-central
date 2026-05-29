@@ -383,11 +383,11 @@ async function loadNodesList() {
     if (!res.ok) throw new Error();
     nodes = await res.json();
   } catch (_) {
-    container.innerHTML = '<p class="text-danger">Failed to load nodes.</p>';
+    container.innerHTML = `<div class="noc-empty-panel"><i class="bx bx-error-circle" style="color:var(--nt-red)"></i><p>Failed to load nodes.</p></div>`;
     return;
   }
   if (nodes.length === 0) {
-    container.innerHTML = '<p class="text-muted">No nodes configured.</p>';
+    container.innerHTML = `<div class="noc-empty-panel"><i class="bx bx-server"></i><p>No nodes configured yet.</p></div>`;
     return;
   }
   container.innerHTML = `
@@ -440,7 +440,7 @@ async function loadNodeDetail(id) {
     if (!res.ok) throw new Error();
     n = await res.json();
   } catch (_) {
-    container.innerHTML = '<p class="text-danger">Failed to load node.</p>';
+    container.innerHTML = `<div class="noc-empty-panel"><i class="bx bx-error-circle" style="color:var(--nt-red)"></i><p>Failed to load node.</p></div>`;
     return;
   }
   const memPct    = n.mem_total_mb && n.mem_used_mb ? Math.round((n.mem_used_mb / n.mem_total_mb) * 100) : null;
@@ -522,7 +522,7 @@ async function loadNodeDetail(id) {
 async function loadTenants(nodeId) {
   const container = document.getElementById('tenants-container');
   if (!container) return;
-  container.innerHTML = `<div class="text-muted p-3">${spinner()}Loading tenants...</div>`;
+  container.innerHTML = `<div class="noc-empty-panel"><div class="spinner-border" role="status"></div><p>Loading tenants…</p></div>`;
 
   let data;
   try {
@@ -533,7 +533,7 @@ async function loadTenants(nodeId) {
     }
     data = await res.json();
   } catch (err) {
-    container.innerHTML = `<div class="alert alert-danger">Failed to load tenants: ${esc(String(err.message || err))}</div>`;
+    container.innerHTML = `<div class="noc-empty-panel"><i class="bx bx-error-circle" style="color:var(--nt-red)"></i><p>Failed to load tenants: ${esc(String(err.message || err))}</p></div>`;
     return;
   }
 
@@ -617,7 +617,7 @@ const CATEGORY_ICONS = {
 async function loadTenantDashboard(nodeId, tenant) {
   const container = document.getElementById('tenant-dashboard-container');
   if (!container) return;
-  container.innerHTML = `<div class="text-muted p-3">${spinner()}Loading dashboard…</div>`;
+  container.innerHTML = `<div class="noc-empty-panel"><div class="spinner-border" role="status"></div><p>Loading dashboard…</p></div>`;
 
   let data;
   try {
@@ -628,7 +628,7 @@ async function loadTenantDashboard(nodeId, tenant) {
     }
     data = await res.json();
   } catch (err) {
-    container.innerHTML = `<div class="alert alert-danger">Failed: ${esc(String(err.message || err))}</div>`;
+    container.innerHTML = `<div class="noc-empty-panel"><i class="bx bx-error-circle" style="color:var(--nt-red)"></i><p>Failed: ${esc(String(err.message || err))}</p></div>`;
     return;
   }
 
